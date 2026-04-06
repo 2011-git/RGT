@@ -1,0 +1,12 @@
+# llama-cpp-python (JamePeng fork - VLM対応版)
+# https://github.com/JamePeng/llama-cpp-python/releases
+# CUDAバージョンに合ったwheelを手動インストール:
+#   pip install llama_cpp_python-<version>+cu<ver>-cp311-cp311-win_amd64.whl
+
+# 依存パッケージ
+mss>=10.0.0
+pynput>=1.7.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0
+pywin32>=306
