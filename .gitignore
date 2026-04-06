@@ -11,6 +11,7 @@ venv/
 # PyInstaller
 build/
 dist/
+*.exe
 # *.spec  # RGT.spec is tracked
 
 # Config (user-specific)

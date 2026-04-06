@@ -24,10 +24,12 @@ VLM リアルタイム翻訳ツール (v8.1.0 - GGUF/llama-cpp-python版)
 """
 
 import os
+import re
 import time
 import threading
 import ctypes
 import hashlib
+import traceback
 import tkinter as tk
 from tkinter import ttk, colorchooser
 import cv2
@@ -187,7 +189,7 @@ try:
     user32 = ctypes.windll.user32
     dwmapi = ctypes.windll.dwmapi
     HAS_WIN32 = True
-except:
+except Exception:
     HAS_WIN32 = False
 
 # PyWin32 (PrintWindow用)
@@ -318,9 +320,9 @@ def get_window_list(include_hidden=False):
                                     process_name = name_buf.value
                             finally:
                                 kernel32.CloseHandle(handle)
-                    except:
+                    except Exception:
                         pass
-                    
+
                     windows.append((hwnd, title, process_name, is_visible))
         return True
     
@@ -428,10 +430,10 @@ def get_client_rect(hwnd):
 # 高DPI対応
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
-except:
+except Exception:
     try:
         ctypes.windll.user32.SetProcessDPIAware()
-    except:
+    except Exception:
         pass
 
 
@@ -504,17 +506,7 @@ Return JSON only:
         self.prompt_translate = self.prompt_translate_game
         self.game_mode = True  # ゲームモードかどうか
         
-        # 選択肢を検出するヒューリスティックパターン
-        self.choice_patterns = [
-            # 疑問文パターン（プレイヤーが聞く質問）
-            r"^(who|what|where|when|why|how|do you|are you|can i|will you|should i)\b",
-            # Yes/No系
-            r"^(yes|no|ok|okay|accept|decline|agree|refuse|leave|stay|fight|run|help|ignore)\b",
-            # 命令形・アクション
-            r"^(tell me|show me|give me|let me|take me|help me|follow|attack|defend|wait)\b",
-            # 短い選択肢（3語以下で疑問符や句点で終わる）
-            r"^[A-Za-z\s]{1,30}[?.]?$",
-        ]
+        # 選択肢検出パターンは _apply_choice_heuristic 内で定義
     
     def set_game_mode(self, is_game: bool):
         """ゲームモード/汎用モードを切り替え"""
@@ -531,7 +523,6 @@ Return JSON only:
     
     def correct_ocr_text(self, text: str) -> str:
         """OCR誤認識を補正"""
-        import re
         corrected = text
         corrections_made = []
         
@@ -570,7 +561,7 @@ Return JSON only:
         """モデルをロード
         
         Args:
-            handler_name: "auto", "Qwen35", "Qwen3VL", "Gemma3", "Moondream"
+            handler_name: "auto", "Qwen35", "Qwen3VL", "Gemma3"
         """
         if not HAS_LLAMA_CPP:
             return False, "llama-cpp-pythonがインストールされていません"
@@ -645,7 +636,6 @@ Return JSON only:
             return True, f"{info.get('name', handler_name)}"
             
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return False, f"モデルロード失敗: {e}"
     
@@ -727,7 +717,6 @@ Return JSON only:
             
         except Exception as e:
             print(f"[VLM] Extract error: {e}")
-            import traceback
             traceback.print_exc()
             return None
     
@@ -828,13 +817,11 @@ Return JSON only:
             
         except Exception as e:
             print(f"[LLM] Translate error: {e}")
-            import traceback
             traceback.print_exc()
             return []
     
     def _parse_translation_response(self, text: str, original_texts: List[str]) -> List[TextBlock]:
         """翻訳レスポンスをパース"""
-        import re
         blocks = []
         
         try:
@@ -877,14 +864,13 @@ Return JSON only:
             print(f"[LLM] JSON parse failed, trying fallback extraction")
 
             # 応答が日本語を含む場合、それを翻訳結果として使用
-            import re as _re
             jp_lines = []
             for line in text.split('\n'):
                 line = line.strip()
                 # 日本語文字（ひらがな・カタカナ・漢字）を含む行を抽出
-                if line and _re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', line):
+                if line and re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', line):
                     # 先頭の記号や番号を除去
-                    cleaned = _re.sub(r'^[\-\*\d\.\)]+\s*', '', line).strip()
+                    cleaned = re.sub(r'^[\-\*\d\.\)]+\s*', '', line).strip()
                     # 引用符を除去
                     cleaned = cleaned.strip('"\'')
                     if cleaned:
@@ -912,8 +898,6 @@ Return JSON only:
     
     def _apply_choice_heuristic(self, block: TextBlock) -> TextBlock:
         """ヒューリスティックで選択肢かどうかを判定・補正"""
-        import re
-        
         original = block.original.strip()
         original_lower = original.lower()
         
@@ -1169,7 +1153,7 @@ class TranslationOverlay:
             WS_EX_NOACTIVATE = 0x08000000
             style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
             user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
-        except:
+        except Exception:
             pass
 
     def _force_topmost(self):
@@ -1180,9 +1164,9 @@ class TranslationOverlay:
             SWP_NOSIZE = 0x0001
             SWP_NOACTIVATE = 0x0010
             SWP_SHOWWINDOW = 0x0040
-            user32.SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, 
+            user32.SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW)
-        except:
+        except Exception:
             pass
 
     def apply_config(self, config: OverlayConfig):
@@ -1344,9 +1328,9 @@ class CaptureRegionOverlay:
             style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
             user32.SetWindowLongW(hwnd, GWL_EXSTYLE, 
                                   style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
-        except:
+        except Exception:
             pass
-    
+
     def update(self, region):
         """領域を更新"""
         if not region:
@@ -1668,8 +1652,7 @@ class VLMTranslator:
         self.start_btn.pack(side=tk.LEFT, padx=5)
         ttk.Button(ctrl_row, text="クリア", command=self.clear_display).pack(side=tk.LEFT)
         
-        # 結果表示（ダミー、オーバーレイのみ使用）
-        self.result_text = None
+        # 結果表示はオーバーレイのみ使用
         
         # === オーバーレイ設定タブ ===
         overlay_tab = ttk.Frame(notebook, padding="10")
@@ -2328,8 +2311,6 @@ class VLMTranslator:
             self.capture_region_overlay.hide()
     
     def clear_display(self):
-        if self.result_text:
-            self.result_text.delete(1.0, tk.END)
         self.cache = ImageCache()
         self.context.clear()
         self.last_original_text = ""
@@ -2361,7 +2342,6 @@ class VLMTranslator:
                     self.process_frame(sct)
                 except Exception as e:
                     print(f"Error: {e}")
-                    import traceback
                     traceback.print_exc()
                 elapsed = time.time() - start_time
                 wait = self.interval.get() - elapsed
@@ -2523,11 +2503,11 @@ class VLMTranslator:
             self.capture_region_overlay.destroy()
         try:
             self.mouse_listener.stop()
-        except:
+        except Exception:
             pass
         try:
             self.key_listener.stop()
-        except:
+        except Exception:
             pass
         self.root.destroy()
         os._exit(0)
